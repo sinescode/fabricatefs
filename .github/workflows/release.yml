@@ -1,0 +1,76 @@
+name: Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        arch: [amd64, arm64]
+        include:
+          - arch: amd64
+            platform: x86_64
+            container: "ubuntu:22.04"
+          - arch: arm64
+            platform: aarch64
+            container: "arm64v8/ubuntu:22.04"
+    
+    container: ${{ matrix.container }}
+    
+    steps:
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y git cmake g++ make
+      
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Configure CMake
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Release
+          
+      - name: Build
+        run: |
+          cd build
+          make -j$(nproc)
+          
+      - name: Create package
+        run: |
+          cd build
+          cpack -G TGZ
+          
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: fabrifs-linux-${{ matrix.arch }}
+          path: build/fabrifs-*.*.*-Linux.*
+  
+  release:
+    needs: [build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v3
+        
+      - name: Display structure of downloaded files
+        run: ls -R
+        
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            fabrifs-linux-amd64/fabrifs-*.*.*-Linux.*
+            fabrifs-linux-arm64/fabrifs-*.*.*-Linux.*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
